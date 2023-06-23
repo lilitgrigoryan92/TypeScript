@@ -98,7 +98,7 @@ class Convert {
   }
 }
 
-const server  = http.createServer((req, res) => {
+const server  = http.createServer((req:any, res:any) => {
   const reqObj= url.parse(req.url, true);
   
   const filePath:string =  reqObj.pathname as string ;
