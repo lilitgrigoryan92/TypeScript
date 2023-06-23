@@ -99,7 +99,7 @@ class Convert {
 }
 
 const server  = http.createServer((req, res) => {
-  const reqObj= url.parse(req.url!, true);
+  const reqObj= url.parse(req.url, true);
   
   const filePath:string =  reqObj.pathname as string ;
 
