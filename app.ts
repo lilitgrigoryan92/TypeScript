@@ -1,9 +1,10 @@
-const http = require("http");
-const url = require("url");
-const path = require("path");
-const os = require("os");
-const fs = require("fs");
-const csv = require("csv-parser");
+import http from 'http';
+import url from 'url';
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
+import csv from 'csv-parser';
+//import { RequestListener } from "http"
 
 const num:number = os.cpus().length;
 const convertedDir:string = path.join(__dirname, "converted");
@@ -30,7 +31,7 @@ class Convert {
           results.push(data);
         })
         .on("end", () => {
-          fs.writeFile(output, JSON.stringify(results, undefined, 2), (error:Error) => {
+          fs.writeFile(output, JSON.stringify(results, undefined, 2), (error) => {
             if (error) {
               reject(error);
             } else {
@@ -48,7 +49,7 @@ class Convert {
         return;
       }
 
-      fs.readdir(this.dirPath, (err:Error, files:string[]) => {
+      fs.readdir(this.dirPath, (err, files:string[]) => {
         if (err) {
           reject(err);
           return;
@@ -98,8 +99,8 @@ class Convert {
   }
 }
 
-const server  = http.createServer((req:any, res:any) => {
-  const reqObj= url.parse(req.url, true);
+const server  = http.createServer((req:http.IncomingMessage, res:http.ServerResponse) => {
+  const reqObj= url.parse(String(req.url), true);
   
   const filePath:string =  reqObj.pathname as string ;
 
@@ -126,7 +127,7 @@ const server  = http.createServer((req:any, res:any) => {
         });
     });
   } else if (req.method === "GET" && filePath === "/files") {
-    fs.readdir(convertedDir, (err:Error, files:string[]) => {
+    fs.readdir(convertedDir, (err, files:string[]) => {
      
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(files));
@@ -136,7 +137,7 @@ const server  = http.createServer((req:any, res:any) => {
     const filename:string = filePath.slice(7); 
     const json:string = path.join(convertedDir, filename);
 
-    fs.readFile(json, (err:Error, data:Buffer) => {
+    fs.readFile(json, (err, data:Buffer) => {
       if (err) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end( "File not found");
@@ -149,7 +150,7 @@ const server  = http.createServer((req:any, res:any) => {
     const filename:string = filePath.slice(7);
     const json:string = path.join(convertedDir, filename);
 
-    fs.unlink(json, (err:Error) => {
+    fs.unlink(json, (err) => {
       if (err) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end( "Not found");
