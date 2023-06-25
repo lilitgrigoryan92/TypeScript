@@ -1,33 +1,33 @@
-import http from 'http';
+import http, { IncomingMessage, ServerResponse } from 'http';
 import url from 'url';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import csv from 'csv-parser';
-//import { RequestListener } from "http"
 
-const num:number = os.cpus().length;
-const convertedDir:string = path.join(__dirname, "converted");
-
+const num: number = os.cpus().length;
+const convertedDir: string = path.join(__dirname, "converted");
 
 interface Data {
-    [key: string]: string;
-  }
+  [key: string]: string;
+}
+
 class Convert {
-    dirPath:string;
-    workerCount:number
-  constructor(dirPath:string) {
+  dirPath: string;
+  workerCount: number;
+
+  constructor(dirPath: string) {
     this.dirPath = dirPath;
     this.workerCount = Math.min(10, num);
   }
 
-  convertCsv(input:string, output:string):Promise<number> {
+  convertCsv(input: string, output: string): Promise<number> {
     return new Promise((resolve, reject) => {
-      const results:Data[] = [];
+      const results: Data[] = [];
 
       fs.createReadStream(input)
         .pipe(csv())
-        .on("data", (data:Data) => {
+        .on("data", (data: Data) => {
           results.push(data);
         })
         .on("end", () => {
@@ -42,20 +42,20 @@ class Convert {
     });
   }
 
-  convertAll():Promise<{count:number;duration:number}> {
+  convertAll(): Promise<{ count: number; duration: number }> {
     return new Promise((resolve, reject) => {
       if (!this.dirPath) {
         reject(new Error("No directory specified."));
         return;
       }
 
-      fs.readdir(this.dirPath, (err, files:string[]) => {
+      fs.readdir(this.dirPath, (err, files: string[]) => {
         if (err) {
           reject(err);
           return;
         }
 
-        const csvFiles:string[]= files.filter((file:string) => file.endsWith(".csv"));
+        const csvFiles: string[] = files.filter((file: string) => file.endsWith(".csv"));
 
         if (csvFiles.length === 0) {
           reject(new Error("No CSV files found in the directory."));
@@ -66,20 +66,20 @@ class Convert {
           fs.mkdirSync(convertedDir);
         }
 
-        const start:number = Date.now();
-        let count:number = 0;
+        const start: number = Date.now();
+        let count: number = 0;
 
-        const workers:Promise<void>[] = csvFiles.map((file:string) => {
-          const input:string = path.join(this.dirPath, file);
-          const output:string= path.join(convertedDir, file.replace(".csv", ".json"));
+        const workers: Promise<void>[] = csvFiles.map((file: string) => {
+          const input: string = path.join(this.dirPath, file);
+          const output: string = path.join(convertedDir, file.replace(".csv", ".json"));
 
-          return new Promise<void>((resolve, reject)  => {
+          return new Promise<void>((resolve, reject) => {
             this.convertCsv(input, output)
               .then((result) => {
                 count += result;
                 resolve();
               })
-              .catch((error:Error) => {
+              .catch((error: Error) => {
                 reject(error);
               });
           });
@@ -87,11 +87,11 @@ class Convert {
 
         Promise.all(workers)
           .then(() => {
-            const end:number = Date.now();
-            const duration:number = end - start;
+            const end: number = Date.now();
+            const duration: number = end - start;
             resolve({ count, duration });
           })
-          .catch((error:Error) => {
+          .catch((error: Error) => {
             reject(error);
           });
       });
@@ -99,76 +99,71 @@ class Convert {
   }
 }
 
-const server  = http.createServer((req:http.IncomingMessage, res:http.ServerResponse) => {
-  const reqObj= url.parse(String(req.url), true);
-  
-  const filePath:string =  reqObj.pathname as string ;
+function sendResponse(res: ServerResponse, status: number, data: any, headers?: any) {
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(data));
+}
+
+const server = http.createServer((req: IncomingMessage, res: ServerResponse) => {
+  const reqObj = url.parse(String(req.url), true);
+  const filePath: string = reqObj.pathname as string;
 
   if (req.method === "POST" && filePath === "/exports") {
-    let body:string = "";
-    req.on("data", (chunk:string) => {
+    let body: string = "";
+    req.on("data", (chunk: string) => {
       body += chunk;
     });
 
     req.on("end", () => {
-
       const data = JSON.parse(body);
-      const dirPath:string = data.dirPath;
+      const dirPath: string = data.dirPath;
 
-      const instance:Convert = new Convert(dirPath);
+      const instance: Convert = new Convert(dirPath);
       instance
         .convertAll()
         .then((data: { count: number; duration: number }) => {
-          res.writeHead(200, { "Content-Type": "application/json" });
-             res.end(data)})
-        .catch((error:Error) => {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: error.message }));
+          sendResponse(res, 200, data, { "Content-Type": "application/json" });
+        })
+        .catch((error: Error) => {
+          sendResponse(res, 400, { error: error.message }, { "Content-Type": "application/json" });
         });
     });
   } else if (req.method === "GET" && filePath === "/files") {
-    fs.readdir(convertedDir, (err, files:string[]) => {
-     
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(files));
-      
+    fs.readdir(convertedDir, (err, files: string[]) => {
+      if (err) {
+        sendResponse(res, 500, { error: "Internal Server Error" }, { "Content-Type": "application/json" });
+      } else {
+        sendResponse(res, 200, files, { "Content-Type": "application/json" });
+      }
     });
   } else if (req.method === "GET" && filePath.startsWith("/files/")) {
-    const filename:string = filePath.slice(7); 
-    const json:string = path.join(convertedDir, filename);
+    const filename: string = filePath.slice(7);
+    const json: string = path.join(convertedDir, filename);
 
-    fs.readFile(json, (err, data:Buffer) => {
+    fs.readFile(json, (err, data: Buffer) => {
       if (err) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end( "File not found");
+        sendResponse(res, 404, { error: "File not found" }, { "Content-Type": "application/json" });
       } else {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(data);
+        sendResponse(res, 200, data, { "Content-Type": "application/json" });
       }
     });
   } else if (req.method === "DELETE" && filePath.startsWith("/files/")) {
-    const filename:string = filePath.slice(7);
-    const json:string = path.join(convertedDir, filename);
+    const filename: string = filePath.slice(7);
+    const json: string = path.join(convertedDir, filename);
 
     fs.unlink(json, (err) => {
       if (err) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end( "Not found");
+        sendResponse(res, 404, { error: "Not found" }, { "Content-Type": "application/json" });
       } else {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end("Deleted");
+        sendResponse(res, 200, "Deleted", { "Content-Type": "application/json" });
       }
     });
   } else {
-    res.writeHead(404, { "Content-Type": "application/json" });
-   res.end("Not Found")
+    sendResponse(res, 404, "Not Found", { "Content-Type": "application/json" });
   }
 });
 
-const port:number = 8000;
+const port: number = 8000;
 server.listen(port, () => {
   console.log("Server running");
 });
-
-
-

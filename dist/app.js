@@ -9,7 +9,6 @@ const path_1 = __importDefault(require("path"));
 const os_1 = __importDefault(require("os"));
 const fs_1 = __importDefault(require("fs"));
 const csv_parser_1 = __importDefault(require("csv-parser"));
-//import { RequestListener } from "http"
 const num = os_1.default.cpus().length;
 const convertedDir = path_1.default.join(__dirname, "converted");
 class Convert {
@@ -85,6 +84,10 @@ class Convert {
         });
     }
 }
+function sendResponse(res, status, data, headers) {
+    res.writeHead(status, headers);
+    res.end(JSON.stringify(data));
+}
 const server = http_1.default.createServer((req, res) => {
     const reqObj = url_1.default.parse(String(req.url), true);
     const filePath = reqObj.pathname;
@@ -100,19 +103,21 @@ const server = http_1.default.createServer((req, res) => {
             instance
                 .convertAll()
                 .then((data) => {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(data);
+                sendResponse(res, 200, data, { "Content-Type": "application/json" });
             })
                 .catch((error) => {
-                res.writeHead(400, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: error.message }));
+                sendResponse(res, 400, { error: error.message }, { "Content-Type": "application/json" });
             });
         });
     }
     else if (req.method === "GET" && filePath === "/files") {
         fs_1.default.readdir(convertedDir, (err, files) => {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify(files));
+            if (err) {
+                sendResponse(res, 500, { error: "Internal Server Error" }, { "Content-Type": "application/json" });
+            }
+            else {
+                sendResponse(res, 200, files, { "Content-Type": "application/json" });
+            }
         });
     }
     else if (req.method === "GET" && filePath.startsWith("/files/")) {
@@ -120,12 +125,10 @@ const server = http_1.default.createServer((req, res) => {
         const json = path_1.default.join(convertedDir, filename);
         fs_1.default.readFile(json, (err, data) => {
             if (err) {
-                res.writeHead(404, { "Content-Type": "application/json" });
-                res.end("File not found");
+                sendResponse(res, 404, { error: "File not found" }, { "Content-Type": "application/json" });
             }
             else {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(data);
+                sendResponse(res, 200, data, { "Content-Type": "application/json" });
             }
         });
     }
@@ -134,18 +137,15 @@ const server = http_1.default.createServer((req, res) => {
         const json = path_1.default.join(convertedDir, filename);
         fs_1.default.unlink(json, (err) => {
             if (err) {
-                res.writeHead(404, { "Content-Type": "application/json" });
-                res.end("Not found");
+                sendResponse(res, 404, { error: "Not found" }, { "Content-Type": "application/json" });
             }
             else {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end("Deleted");
+                sendResponse(res, 200, "Deleted", { "Content-Type": "application/json" });
             }
         });
     }
     else {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end("Not Found");
+        sendResponse(res, 404, "Not Found", { "Content-Type": "application/json" });
     }
 });
 const port = 8000;
